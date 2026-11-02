@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+
+        *{
+            font-family: "Lucida Console", monospace;
+            color: skyblue;
+        }
+
+        input, button{
+            background-color: dimgray;
+            color: darkturquoise;
+        }
+
+        canvas{
+            border: 10px solid gray;
+            border-radius: 15px;
+        }
+
+    </style>
+</head>
+
+<body style="background-color:#36454f;">
+
+    <label for="PLANET_COUNT">Number of Sattelites</label>
+    <input type="number" id="PLANET_COUNT" name="PLANET_COUNT" value=4><br><br>
+
+    <label for="PLANET_SPACING_COEFF">Average Space Between Sattelites</label>
+    <input type="number" id="PLANET_SPACING_COEFF" name="PLANET_SPACING_COEFF" value=100><br><br>
+
+    <label for="PLANET_SPACING_EXP">Exponent Governing Sattelite Distance</label>
+    <input type="number" id="PLANET_SPACING_EXP" name="PLANET_SPACING_EXP" value=1.125><br><br>
+
+    <label for="PLANET_SPACING_VARIANCE">Random Variation of Sattelite Placement</label>
+    <input type="number" id="PLANET_SPACING_VARIANCE" name="PLANET_SPACING_VARIANCE" value=10><br><br>
+
+    <label for="PLANET_MASS">Average Sattelite Mass</label>
+    <input type="number" id="PLANET_MASS" name="PLANET_MASS" value=30><br><br>
+
+    <label for="PLANET_MASS_VARIANCE">Random Variation of Sattelite Mass</label>
+    <input type="number" id="PLANET_MASS_VARIANCE" name="PLANET_MASS_VARIANCE" value=25><br><br>
+
+    <label for="MOON_ODDS">1 in X Chance to Generate a Moon.</label>
+    <input type="number" id="MOON_ODDS" name="MOON_ODDS" value=10><br><br>
+
+    <label for="D">Density Constant</label>
+    <input type="number" id="D" name="D" value=0.25><br><br>
+
+    <label for="CHAOS">Disorder Orbitals</label>
+    <input type="checkbox" id="CHAOS" name="CHAOS"><br><br>
+
+    <label for="TRAILS">Show Trails</label>
+    <input type="checkbox" id="TRAILS" name="TRAILS" checked="true"><br><br>
+
+    <label for="POINTERS">Show Pointers</label>
+    <input type="checkbox" id="POINTERS" name="POINTERS" checked="true"><br><br>
+
+    <button onclick="start()">Start</button><br><br>
+
+    <canvas id="c" width="1200" height="1200" onclick="start()">
+    Your browser does not support the HTML canvas tag.
+    </canvas>
+
+
+    <script>
+
+        var width = window.innerWidth - 35;
+        var height = window.innerHeight - 35;
+
+        var POINTERS = true;
+        var TRAILS = true;
+
+        function randI(low, high){
+            return Math.floor(Math.random()*(high-low+1)) + low;
+        }
+
+
+        var CHAOS = false;
+        function randU(){
+            if(CHAOS){
+                return randI(0, 1)*2 - 1;
+            }else{
+                return 1;
+            }
+        }
+
+        function clearScreen(){
+            drawRect(0, 0, c.width, c.height, "black");
+        }
+
+        function drawLine(x1, y1, x2, y2){
+            g.beginPath();
+            g.moveTo(x1, y1);
+            g.lineTo(x2, y2);
+            g.stroke();
+        }
+
+        function drawRect(x1, y1, x2, y2, colour){
+            g.beginPath();
+            g.fillStyle = colour;
+            g.fillRect(x1, y1, x2, y2);
+            g.fillStyle = "black";
+        }
+
+        function drawCircle(x, y, radius, colour, outline=null, weight=0){
+            if(x-radius < 0 || y-radius < 0 || x+radius > width || y+radius > height){
+                return;
+            }
+
+            g.beginPath();
+            g.arc(x, y, radius, 0, 2 * Math.PI);
+            g.fillStyle = colour;
+            g.fill();
+            if(outline == null){
+                g.strokeStyle = colour;
+            }else{
+                g.strokeStyle = outline;
+            }
+            g.lineWidth = weight;
+            g.stroke();
+        }
+
+        function drawPointer(x, y, radius, angle, colour){
+            g.beginPath();
+
+            for(var i = 0; i < 3; i++){
+                var x2 = x + radius*Math.cos(Math.PI - Math.PI/6 + i*(Math.PI/1.5) + angle);
+                var y2 = y + radius*Math.sin(Math.PI - Math.PI/6 + i*(Math.PI/1.5) + angle);
+                g.moveTo(x, y);
+                g.lineTo(x2, y2);
+                x = x2;
+                y = y2;
+            }
+
+            //g.fillStyle = colour;
+            //g.fill();
+            g.strokeStyle = colour;
+            g.lineWidth = 2;
+            g.stroke();
+        }
+
+        function wrap(value, limit){
+            while(value < 0){
+                value += limit;
+            }
+            return value%limit;
+        }
+
+        function componentToHex(color) {
+            var hex = color.toString(16);
+            return hex.length == 1 ? "0" + hex : hex;
+        }
+
+        function rgb(r, g, b) {
+            return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
+        }
+
+        function randRGB(mode, x=0, y=0){
+            if(mode == 0){
+                return rgb(randI(200, 255), randI(0, 200), randI(0, 100));
+            }else if(mode == 1){
+                var r = 0;
+                var g = 0;
+                var b = 0;
+                while(r+g+b < x || !(r > y || g > y || b > y)){
+                    r = randI(0, 255);
+                    g = randI(0, 255);
+                    b = randI(0, 255);
+                }
+                return rgb(r, g, b);
+            }
+        }
+
+        class Mass{
+            constructor(x, y, mass, radius, colour){
+                this.x = x;
+                this.y = y;
+                this.mass = mass;
+                this.radius = radius;
+                this.vx = 0;
+                this.vy = 0;
+                this.px = 0;
+                this.py = 0;
+                this.colour = colour;
+                this.positions = [[]];
+            }
+        }
+
+        var c = document.getElementById("c");
+        c.setAttribute("width", width);
+        c.setAttribute("height", height);
+        var g = c.getContext("2d");
+
+        const G = 1;//Gravitational Constant
+        var D = 0.25;//Density Constant
+
+        var STAR_MASS = 5000;
+        var STAR_COLOUR = randRGB(0);
+
+        var PLANET_COUNT = 4;
+        var PLANET_SPACING_EXP = 1 + (1/8);
+        var PLANET_SPACING_COEFF = 90;
+        var PLANET_SPACING_VARIANCE = 0;
+        var PLANET_MASS = 30;
+        var PLANET_MASS_VARIANCE = 25;
+        var MOON_ODDS = 5;
+
+        const MAX_ZOOM = 5000;
+
+        var masses;
+        var sun;
+        var t;
+        var lastScale;
+
+
+        var peak = 0;
+
+        function start(){
+            t = 0;
+            peak = 0;
+            //PLANET_COUNT += 1;
+
+            D = document.getElementById("D").value;//Density Constant
+            PLANET_COUNT = document.getElementById("PLANET_COUNT").value;
+            PLANET_SPACING_EXP = document.getElementById("PLANET_SPACING_EXP").value;
+            PLANET_SPACING_COEFF = document.getElementById("PLANET_SPACING_COEFF").value;
+            PLANET_SPACING_VARIANCE = document.getElementById("PLANET_SPACING_VARIANCE").value;
+            PLANET_MASS = parseFloat(document.getElementById("PLANET_MASS").value);
+            PLANET_MASS_VARIANCE = document.getElementById("PLANET_MASS_VARIANCE").value;
+            MOON_ODDS = document.getElementById("MOON_ODDS").value;
+            CHAOS = document.getElementById("CHAOS").checked;
+            POINTERS = document.getElementById("POINTERS").checked;
+            TRAILS = document.getElementById("TRAILS").checked;
+
+
+
+            masses = [];
+            sun = new Mass(0, 0, STAR_MASS, Math.sqrt((STAR_MASS/D)/Math.PI), STAR_COLOUR);
+            masses.push(sun);
+
+            for(var i = 0; i < PLANET_COUNT; i++){
+                masses.push(new Mass(randU()*(sun.radius + (PLANET_SPACING_COEFF)*((i+1)**PLANET_SPACING_EXP) + randI(-PLANET_SPACING_VARIANCE, PLANET_SPACING_VARIANCE)), 0, PLANET_MASS + randI(-PLANET_MASS_VARIANCE, PLANET_MASS_VARIANCE), 0, randRGB(1, 100, 150)));
+                a = masses[masses.length-1];
+                a.radius = Math.sqrt((a.mass/D)/Math.PI);
+                a.vy = randU()*Math.sqrt((G*sun.mass)/Math.abs(a.x-sun.x));
+                var k = 0;
+                while(MOON_ODDS > 1 && randI(1, MOON_ODDS) == 1){
+                    k++;
+                    masses.push(new Mass(a.x+a.radius+randU()*(PLANET_SPACING_COEFF/10)*k, 0, randI(0, PLANET_MASS/10), 0, randRGB(1, 100, 150)));
+                    b = masses[masses.length-1];
+                    b.radius = Math.sqrt((b.mass/D)/Math.PI);
+                    b.vy = randU()*Math.sqrt((G*a.mass)/Math.abs(b.x-a.x)) + a.vy;
+                }
+            }
+
+            clearScreen()
+        }
+
+        var timeA = Date.now();
+        var timeB = Date.now();
+        var inter = 0;
+
+        function update(){
+            //console.log("-");
+
+            clearScreen();
+
+            for(var i = 0; i < masses.length; i++){
+                var mI = masses[i];
+                for(var k = 1; k < masses.length - i; k++){
+                    var mK = masses[i+k];
+                    var dir = [mI.x - mK.x, mI.y - mK.y];
+                    var dist = Math.sqrt(dir[0]**2 + dir[1]**2);
+
+                    if(dist <= mI.radius+mK.radius){
+
+                        mI.px = mI.mass*mI.vx;
+                        mI.py = mI.mass*mI.vy;
+
+                        mK.px = mK.mass*mK.vx;
+                        mK.py = mK.mass*mK.vy;
+
+                        mI.mass += mK.mass;
+                        mI.radius = Math.sqrt((mI.mass/D)/Math.PI);
+
+                        mI.x = (mI.mass*mI.x + mK.mass*mK.x)/(mI.mass + mK.mass);
+                        mI.y = (mI.mass*mI.y + mK.mass*mK.y)/(mI.mass + mK.mass);
+
+                        mI.px += mK.px;
+                        mI.py += mK.py;
+
+                        mI.vx = mI.px/mI.mass;
+                        mI.vy = mI.py/mI.mass;
+
+                        mI.colour = randRGB(1, 100, 150);
+                        for(var j = 0; j < mK.positions.length; j++){
+                            mI.positions.push(mK.positions[j]);
+                        }
+
+                        masses.splice(i+k, 1);
+                        console.log("Bang! t=" + t);
+                    }
+                }
+            }
+
+            for(var i = 0; i < masses.length; i++){
+                var mI = masses[i];
+                for(var k = 1; k < masses.length - i; k++){
+                    var mK = masses[i+k];
+                    var dir = [mI.x - mK.x, mI.y - mK.y];
+                    var dist = Math.sqrt(dir[0]**2 + dir[1]**2);
+
+                    if(dist == 0){
+                        continue;
+                    }
+
+                    dir[0] /= dist;
+                    dir[1] /= dist;
+
+                    mI.vx -= dir[0]*((G*mK.mass)/(dist**2));
+                    mI.vy -= dir[1]*((G*mK.mass)/(dist**2));
+
+                    mK.vx += dir[0]*((G*mI.mass)/(dist**2));
+                    mK.vy += dir[1]*((G*mI.mass)/(dist**2));
+
+                }
+
+                mI.x += mI.vx;
+                mI.y += mI.vy;
+            }
+
+            var Xmax = 0;
+            var Xmin = 0;
+
+            var Ymax = 0;
+            var Ymin = 0;
+
+            for(var i = 0; i < masses.length; i++){
+                var mI = masses[i];
+
+                var dx = Math.abs(sun.x - (mI.x))+mI.radius;
+                var dy = Math.abs(sun.y - (mI.y))+mI.radius;
+
+                if(dx > Xmax && dx < MAX_ZOOM){
+                    Xmax = dx;
+                }
+
+                if(dy > Ymax && dy < MAX_ZOOM){
+                    Ymax = dy;
+                }
+            }
+
+            var Xlim = (2*(Xmax))/(width-10);
+            var Ylim = (2*(Ymax))/(height-10);
+
+            var scale = 1;
+
+            if(Xlim > Ylim){
+                scale = Xlim;
+            }else{
+                scale = Ylim;
+            }
+
+            if(!(t == 0)){
+                if(scale > lastScale){
+                    scale = Math.min(scale, lastScale*1.005);
+                }else{
+                    scale = Math.max(scale, lastScale*0.9995);
+                }
+            }
+
+            scale = Math.max(scale, 1.01);
+            //scale = 1 + (t/100)
+            lastScale = scale;
+            //scale = 1;
+
+            var gridSize = (25/scale)*(2**Math.ceil(Math.log2(scale)));
+            var gridWidth = Math.ceil((width)/(gridSize*2))*2;
+            var gridHeight = Math.ceil((height)/(gridSize*2))*2;
+
+            for(var x = 0; x <= gridWidth; x ++){
+                for(var y = 0; y <= gridHeight; y ++){
+                    drawCircle(wrap((width/2 + (x*gridSize) - (sun.x/scale)), (gridWidth*gridSize)), wrap((height/2 + (y*gridSize) - (sun.y/scale)), (gridHeight*gridSize)), 0.5 + 0*(((x+1)%2) * ((y+1)%2)), "lightgray");
+                }
+            }
+
+            sun.colour = STAR_COLOUR;
+
+            if(TRAILS){
+                for(var i = 0; i < masses.length; i++){
+                    mI = masses[i];
+                    for(var j = 0; j < mI.positions.length; j++){
+                        if(i == 0 && j == 0){
+                            continue;
+                        }
+                        //console.log(j);
+                        for(var k = 0; k < mI.positions[j].length; k++){
+                            var px = mI.positions[j][k][0];
+                            var py = mI.positions[j][k][1];
+                            drawCircle((px)/scale + width/2, (py)/scale + height/2, Math.max(2/scale, 0.5), mI.colour);
+                        }
+
+                        if(t%20 == 0){
+                            if(j == 0){
+                                mI.positions[j].push([mI.x-sun.x, mI.y-sun.y]);
+                            }
+                            if(t > 1500){
+                                mI.positions[j].splice(0, 1);
+                            }
+                        }
+                    }
+
+                }
+            }
+
+            for(var i = 0; i < masses.length; i++){
+                mI = masses[i];
+
+                drawCircle((mI.x - sun.x)/scale + width/2, (mI.y - sun.y)/scale + height/2, (mI.radius)/scale, mI.colour);
+            }
+
+            if(POINTERS){
+                for(var i = 0; i < masses.length; i++){
+                    mI = masses[i];
+
+                    var x = mI.x - sun.x;
+                    var y = mI.y - sun.y;
+
+                    x = Math.min(x, (width*scale/2));
+                    x = Math.max(x, -(width*scale/2));
+
+                    y = Math.min(y, (height*scale/2));
+                    y = Math.max(y, -(height*scale/2));
+
+                    if(Math.abs(mI.x-sun.x) >= (width*scale/2 - mI.radius) || Math.abs(mI.y-sun.y) >= (height*scale/2 - mI.radius)){
+                        var angle;
+                        if(!mI.y == 0){
+                            angle = Math.atan(((mI.y-sun.y)-y)/((mI.x-sun.x)-x));
+                        }else{
+                            angle = 0;
+                        }
+
+                        if((mI.y-y) < 0 && (mI.x-x) < 0){
+                            angle += Math.PI;
+                        }
+
+                        drawPointer(x/scale + width/2, y/scale + height/2, Math.max(mI.radius/scale, 10), angle, mI.colour);
+                    }
+                }
+            }
+            t++;
+            //console.log(Date.now() - timeA);
+        }
+
+        start();
+        setInterval(update, 1000/(24));
+
+    </script>
+
+</body>
+</html>
